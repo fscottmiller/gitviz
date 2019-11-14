@@ -1,0 +1,44 @@
+echo -n "Enter your GitHub username: "
+read username
+
+echo -n "Enter your GitHub password: "
+read -s password
+
+docker build ./gitviz -t gitviz
+
+docker run -d                     \
+  --name elasticsearch            \
+  -p 9200:9200                    \
+  -p 9300:9300                    \
+  -e "discovery.type=single-node" \
+  elasticsearch:7.4.2
+
+docker run -d \
+  --name kibana \
+  -p 5601:5601 \
+  --link elasticsearch:elasticsearch \
+  -e "ELASTICSEARCH_URL=http://elasticsearch:9200" \
+  kibana:7.4.2
+
+i=60
+while [ $i -gt 0 ]; do
+    response=$(curl --write-out %{http_code} --silent --output /dev/null localhost:9200)
+    if [ $response == 200 ]; then
+        echo "hell yeah!"
+        docker run                      \
+            --rm                        \
+            --network=host              \
+            -e USERNAME=$username       \
+            -e PASSWORD=$password       \
+            gitviz
+        echo "data is in; you're good to go!"
+        echo "You need to import the settings."
+        echo "Go to localhost:5601, then browse to Settings/Saved Objects"
+        echo "Select Import and upload the file kibana/export.ndjson"
+        break
+    else
+        echo "waiting for elastic to load..."
+        sleep 5
+        i=$((i - 1))
+    fi
+done
